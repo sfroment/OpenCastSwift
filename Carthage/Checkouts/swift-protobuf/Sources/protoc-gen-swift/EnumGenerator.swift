@@ -26,6 +26,8 @@ class EnumGenerator {
   private let generatorOptions: GeneratorOptions
   private let namer: SwiftProtobufNamer
 
+  /// The values that aren't aliases, as ordered in the .proto.
+  private let mainEnumValueDescriptors: [EnumValueDescriptor]
   /// The values that aren't aliases, sorted by number.
   private let mainEnumValueDescriptorsSorted: [EnumValueDescriptor]
 
@@ -40,9 +42,10 @@ class EnumGenerator {
     self.generatorOptions = generatorOptions
     self.namer = namer
 
-    mainEnumValueDescriptorsSorted = descriptor.values.filter({
+    mainEnumValueDescriptors = descriptor.values.filter({
       return $0.aliasOf == nil
-    }).sorted(by: {
+    })
+    mainEnumValueDescriptorsSorted = mainEnumValueDescriptors.sorted(by: {
       return $0.number < $1.number
     })
 
@@ -80,6 +83,39 @@ class EnumGenerator {
     p.outdent()
     p.print("\n")
     p.print("}\n")
+  }
+
+  func generateCaseIterable(
+    printer p: inout CodePrinter,
+    includeGuards: Bool = true
+  ) {
+    // NOTE: When we can assume Swift 4.2, this should move from an extension
+    // to being directly done when declaring the type.
+
+    let visibility = generatorOptions.visibilitySourceSnippet
+
+    p.print("\n")
+    if includeGuards {
+      p.print("#if swift(>=4.2)\n\n")
+    }
+    p.print("extension \(swiftFullName): CaseIterable {\n")
+    p.indent()
+    if enumDescriptor.hasUnknownPreservingSemantics {
+      p.print("// The compiler won't synthesize support with the \(unrecognizedCaseName) case.\n")
+      p.print("\(visibility)static var allCases: [\(swiftFullName)] = [\n")
+      for v in mainEnumValueDescriptors {
+        let dottedName = namer.dottedRelativeName(enumValue: v)
+        p.print("  \(dottedName),\n")
+      }
+      p.print("]\n")
+    } else {
+      p.print("// Support synthesized by the compiler.\n")
+    }
+    p.outdent()
+    p.print("}\n")
+    if includeGuards {
+      p.print("\n#endif  // swift(>=4.2)\n")
+    }
   }
 
   func generateRuntimeSupport(printer p: inout CodePrinter) {
@@ -163,17 +199,58 @@ class EnumGenerator {
   private func generateRawValueProperty(printer p: inout CodePrinter) {
     let visibility = generatorOptions.visibilitySourceSnippet
 
+    // See https://github.com/apple/swift-protobuf/issues/904 for the full
+    // details on why the default has to get added even though the switch
+    // is complete.
+
+    // This is a "magic" value, currently picked based on the Swift 5.1
+    // compiler, it will need ensure the warning doesn't trigger on all
+    // versions of the compiler, meaning if the error starts to show up
+    // again, all one can do is lower the limit.
+    let maxCasesInSwitch = 500
+
+    let neededCases = mainEnumValueDescriptorsSorted.count +
+      (enumDescriptor.hasUnknownPreservingSemantics ? 1 : 0)
+    let useMultipleSwitches = neededCases > maxCasesInSwitch
+
     p.print("\(visibility)var rawValue: Int {\n")
     p.indent()
-    p.print("switch self {\n")
-    for v in mainEnumValueDescriptorsSorted {
-      let dottedName = namer.dottedRelativeName(enumValue: v)
-      p.print("case \(dottedName): return \(v.number)\n")
+
+    if useMultipleSwitches {
+      for (i, v) in mainEnumValueDescriptorsSorted.enumerated() {
+        if (i % maxCasesInSwitch) == 0 {
+          if i > 0 {
+            p.print(
+              "default: break\n",
+              "}\n")
+          }
+          p.print("switch self {\n")
+        }
+        let dottedName = namer.dottedRelativeName(enumValue: v)
+        p.print("case \(dottedName): return \(v.number)\n")
+      }
+      if enumDescriptor.hasUnknownPreservingSemantics {
+        p.print("case .\(unrecognizedCaseName)(let i): return i\n")
+      }
+      p.print(
+        "default: break\n",
+        "}\n",
+        "\n",
+        "// Can't get here, all the cases are listed in the above switches.\n",
+        "// See https://github.com/apple/swift-protobuf/issues/904 for more details.\n",
+        "fatalError()\n")
+    } else {
+      p.print("switch self {\n")
+      for v in mainEnumValueDescriptorsSorted {
+        let dottedName = namer.dottedRelativeName(enumValue: v)
+        p.print("case \(dottedName): return \(v.number)\n")
+      }
+      if enumDescriptor.hasUnknownPreservingSemantics {
+        p.print("case .\(unrecognizedCaseName)(let i): return i\n")
+      }
+      p.print("}\n")
     }
-    if enumDescriptor.hasUnknownPreservingSemantics {
-      p.print("case .\(unrecognizedCaseName)(let i): return i\n")
-    }
-    p.print("}\n")
+
     p.outdent()
     p.print("}\n")
   }

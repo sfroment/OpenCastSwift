@@ -1,6 +1,6 @@
 // Tests/SwiftProtobufTests/Test_TextFormat_proto3.swift - Exercise proto3 text format coding
 //
-// Copyright (c) 2014 - 2016 Apple Inc. and the project authors
+// Copyright (c) 2014 - 2019 Apple Inc. and the project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See LICENSE.txt for license information:
@@ -286,9 +286,9 @@ class Test_TextFormat_proto3: XCTestCase, PBTestHelpers {
         var a = MessageTestType()
         a.optionalFloat = 11
 
-        XCTAssertEqual("optional_float: 11\n", a.textFormatString())
+        XCTAssertEqual("optional_float: 11.0\n", a.textFormatString())
 
-        assertTextFormatEncode("optional_float: 11\n") {(o: inout MessageTestType) in
+        assertTextFormatEncode("optional_float: 11.0\n") {(o: inout MessageTestType) in
             o.optionalFloat = 11
         }
         assertTextFormatDecodeSucceeds("optional_float: 1.0f") {
@@ -315,8 +315,61 @@ class Test_TextFormat_proto3: XCTestCase, PBTestHelpers {
             (o: MessageTestType) in
             return o.optionalFloat == 1.0
         }
+        assertTextFormatDecodeSucceeds("optional_float: 11\n") {
+            (o: MessageTestType) in
+            return o.optionalFloat == 11.0
+        }
+        assertTextFormatDecodeSucceeds("optional_float: 11f\n") {
+            (o: MessageTestType) in
+            return o.optionalFloat == 11.0
+        }
+        assertTextFormatDecodeSucceeds("optional_float: 0\n") {
+            (o: MessageTestType) in
+            return o.optionalFloat == 0.0
+        }
+        assertTextFormatDecodeSucceeds("optional_float: 0f\n") {
+            (o: MessageTestType) in
+            return o.optionalFloat == 0.0
+        }
         assertTextFormatEncode("optional_float: inf\n") {(o: inout MessageTestType) in o.optionalFloat = Float.infinity}
         assertTextFormatEncode("optional_float: -inf\n") {(o: inout MessageTestType) in o.optionalFloat = -Float.infinity}
+
+        // protobuf conformance requires too-large floats to round to Infinity
+        assertTextFormatDecodeSucceeds("optional_float: 3.4028235e+39\n") {
+            (o: MessageTestType) in
+            return o.optionalFloat == Float.infinity
+        }
+        assertTextFormatDecodeSucceeds("optional_float: -3.4028235e+39\n") {
+            (o: MessageTestType) in
+            return o.optionalFloat == -Float.infinity
+        }
+        // Too-small values round to zero (not currently checked by conformance)
+        assertTextFormatDecodeSucceeds("optional_float: 1e-50\n") {
+            (o: MessageTestType) in
+            return o.optionalFloat == 0.0 && o.optionalFloat.sign == .plus
+        }
+        assertTextFormatDecodeSucceeds("optional_float: -1e-50\n") {
+            (o: MessageTestType) in
+            return o.optionalFloat == 0.0 && o.optionalFloat.sign == .minus
+        }
+        // protobuf conformance requires subnormals to be handled
+        assertTextFormatDecodeSucceeds("optional_float: 1.17549e-39\n") {
+            (o: MessageTestType) in
+            return o.optionalFloat == Float(1.17549e-39)
+        }
+        assertTextFormatDecodeSucceeds("optional_float: -1.17549e-39\n") {
+            (o: MessageTestType) in
+            return o.optionalFloat == Float(-1.17549e-39)
+        }
+        // protobuf conformance requires integer forms larger than Int64 to be accepted
+        assertTextFormatDecodeSucceeds("optional_float: 18446744073709551616\n") {
+            (o: MessageTestType) in
+            return o.optionalFloat == 1.84467441e+19
+        }
+        assertTextFormatDecodeSucceeds("optional_float: -18446744073709551616\n") {
+            (o: MessageTestType) in
+            return o.optionalFloat == -1.84467441e+19
+        }
 
         let b = Proto3Unittest_TestAllTypes.with {$0.optionalFloat = Float.nan}
         XCTAssertEqual("optional_float: nan\n", b.textFormatString())
@@ -367,17 +420,17 @@ class Test_TextFormat_proto3: XCTestCase, PBTestHelpers {
         assertRoundTripText {$0.optionalFloat = 1e-10}
         assertRoundTripText {$0.optionalFloat = 1e-20}
         assertRoundTripText {$0.optionalFloat = 1e-30}
-        assertRoundTripText {$0.optionalFloat = 1e-40}
-        assertRoundTripText {$0.optionalFloat = 1e-50}
-        assertRoundTripText {$0.optionalFloat = 1e-60}
-        assertRoundTripText {$0.optionalFloat = 1e-100}
-        assertRoundTripText {$0.optionalFloat = 1e-200}
+        assertRoundTripText {$0.optionalFloat = Float(1e-40)}
+        assertRoundTripText {$0.optionalFloat = Float(1e-50)}
+        assertRoundTripText {$0.optionalFloat = Float(1e-60)}
+        assertRoundTripText {$0.optionalFloat = Float(1e-100)}
+        assertRoundTripText {$0.optionalFloat = Float(1e-200)}
         assertRoundTripText {$0.optionalFloat = Float.pi}
         assertRoundTripText {$0.optionalFloat = 123456.789123456789123}
         assertRoundTripText {$0.optionalFloat = 1999.9999999999}
         assertRoundTripText {$0.optionalFloat = 1999.9}
         assertRoundTripText {$0.optionalFloat = 1999.99}
-        assertRoundTripText {$0.optionalFloat = 1999.99}
+        assertRoundTripText {$0.optionalFloat = 1999.999}
         assertRoundTripText {$0.optionalFloat = 3.402823567e+38}
         assertRoundTripText {$0.optionalFloat = 1.1754944e-38}
     }
@@ -386,9 +439,9 @@ class Test_TextFormat_proto3: XCTestCase, PBTestHelpers {
         var a = MessageTestType()
         a.optionalDouble = 12
 
-        XCTAssertEqual("optional_double: 12\n", a.textFormatString())
+        XCTAssertEqual("optional_double: 12.0\n", a.textFormatString())
 
-        assertTextFormatEncode("optional_double: 12\n") {(o: inout MessageTestType) in o.optionalDouble = 12 }
+        assertTextFormatEncode("optional_double: 12.0\n") {(o: inout MessageTestType) in o.optionalDouble = 12 }
         assertTextFormatEncode("optional_double: inf\n") {(o: inout MessageTestType) in o.optionalDouble = Double.infinity}
         assertTextFormatEncode("optional_double: -inf\n") {(o: inout MessageTestType) in o.optionalDouble = -Double.infinity}
         let b = Proto3Unittest_TestAllTypes.with {$0.optionalDouble = Double.nan}
@@ -396,6 +449,12 @@ class Test_TextFormat_proto3: XCTestCase, PBTestHelpers {
 
         assertTextFormatDecodeSucceeds("optional_double: 1.0\n") {(o: MessageTestType) in
             return o.optionalDouble == 1.0
+        }
+        assertTextFormatDecodeSucceeds("optional_double: 1\n") {(o: MessageTestType) in
+            return o.optionalDouble == 1.0
+        }
+        assertTextFormatDecodeSucceeds("optional_double: 0\n") {(o: MessageTestType) in
+            return o.optionalDouble == 0.0
         }
         assertTextFormatDecodeSucceeds("12: 1.0\n") {(o: MessageTestType) in
             return o.optionalDouble == 1.0
@@ -642,33 +701,33 @@ class Test_TextFormat_proto3: XCTestCase, PBTestHelpers {
         XCTAssertEqual("", o.textFormatString())
 
         assertTextFormatEncode("optional_bytes: \"AB\"\n") {(o: inout MessageTestType) in
-            o.optionalBytes = Data(bytes: [65, 66])
+            o.optionalBytes = Data([65, 66])
         }
         assertTextFormatEncode("optional_bytes: \"\\000\\001AB\\177\\200\\377\"\n") {(o: inout MessageTestType) in
-            o.optionalBytes = Data(bytes: [0, 1, 65, 66, 127, 128, 255])
+            o.optionalBytes = Data([0, 1, 65, 66, 127, 128, 255])
         }
         assertTextFormatEncode("optional_bytes: \"\\b\\t\\n\\v\\f\\r\\\"'?\\\\\"\n") {(o: inout MessageTestType) in
-            o.optionalBytes = Data(bytes: [8, 9, 10, 11, 12, 13, 34, 39, 63, 92])
+            o.optionalBytes = Data([8, 9, 10, 11, 12, 13, 34, 39, 63, 92])
         }
         assertTextFormatDecodeSucceeds("optional_bytes: \"A\" \"B\"\n") {(o: MessageTestType) in
-            return o.optionalBytes == Data(bytes: [65, 66])
+            return o.optionalBytes == Data([65, 66])
         }
         assertTextFormatDecodeSucceeds("optional_bytes: \"\\0\\1AB\\178\\189\\x61\\xdq\\x123456789\"\n") {(o: MessageTestType) in
-            return o.optionalBytes == Data(bytes: [0, 1, 65, 66, 15, 56, 1, 56, 57, 97, 13, 113, 18, 51, 52, 53, 54, 55, 56, 57])
+            return o.optionalBytes == Data([0, 1, 65, 66, 15, 56, 1, 56, 57, 97, 13, 113, 18, 51, 52, 53, 54, 55, 56, 57])
         }
         // "\1" followed by "2", not "\12"
         assertTextFormatDecodeSucceeds("optional_bytes: \"\\1\" \"2\"") {(o: MessageTestType) in
-            return o.optionalBytes == Data(bytes: [1, 50]) // Not [10]
+            return o.optionalBytes == Data([1, 50]) // Not [10]
         }
         // "\x6" followed by "2", not "\x62"
         assertTextFormatDecodeSucceeds("optional_bytes: \"\\x6\" \"2\"") {(o: MessageTestType) in
-            return o.optionalBytes == Data(bytes: [6, 50]) // Not [98]
+            return o.optionalBytes == Data([6, 50]) // Not [98]
         }
         assertTextFormatDecodeSucceeds("optional_bytes: \"\"\n") {(o: MessageTestType) in
             return o.optionalBytes == Data()
         }
         assertTextFormatDecodeSucceeds("optional_bytes: \"\\b\\t\\n\\v\\f\\r\\\"\\'\\?'\"\n") {(o: MessageTestType) in
-            return o.optionalBytes == Data(bytes: [8, 9, 10, 11, 12, 13, 34, 39, 63, 39])
+            return o.optionalBytes == Data([8, 9, 10, 11, 12, 13, 34, 39, 63, 39])
         }
 
         assertTextFormatDecodeFails("optional_bytes: 10\n")
@@ -692,7 +751,7 @@ class Test_TextFormat_proto3: XCTestCase, PBTestHelpers {
 
     func testEncoding_optionalBytes_roundtrip() throws {
         for i in UInt8(0)...UInt8(255) {
-            let d = Data(bytes: [i])
+            let d = Data([i])
             let message = Proto3Unittest_TestAllTypes.with { $0.optionalBytes = d }
             let text = message.textFormatString()
             let decoded = try Proto3Unittest_TestAllTypes(textFormatString: text)
@@ -964,7 +1023,7 @@ class Test_TextFormat_proto3: XCTestCase, PBTestHelpers {
     }
 
     func testEncoding_repeatedFloat() {
-        assertTextFormatEncode("repeated_float: [21, 22]\n") {(o: inout MessageTestType) in
+        assertTextFormatEncode("repeated_float: [21.0, 22.0]\n") {(o: inout MessageTestType) in
             o.repeatedFloat = [21, 22]
         }
 
@@ -972,7 +1031,7 @@ class Test_TextFormat_proto3: XCTestCase, PBTestHelpers {
     }
 
     func testEncoding_repeatedDouble() {
-        assertTextFormatEncode("repeated_double: [23, 24]\n") {(o: inout MessageTestType) in
+        assertTextFormatEncode("repeated_double: [23.0, 24.0]\n") {(o: inout MessageTestType) in
             o.repeatedDouble = [23, 24]
         }
         assertTextFormatEncode("repeated_double: [2.25, 2.5]\n") {(o: inout MessageTestType) in
@@ -1031,20 +1090,20 @@ class Test_TextFormat_proto3: XCTestCase, PBTestHelpers {
 
     func testEncoding_repeatedBytes() {
         var a = MessageTestType()
-        a.repeatedBytes = [Data(), Data(bytes: [65, 66])]
+        a.repeatedBytes = [Data(), Data([65, 66])]
         XCTAssertEqual("repeated_bytes: \"\"\nrepeated_bytes: \"AB\"\n", a.textFormatString())
 
         assertTextFormatEncode("repeated_bytes: \"\"\nrepeated_bytes: \"AB\"\n") {(o: inout MessageTestType) in
-            o.repeatedBytes = [Data(), Data(bytes: [65, 66])]
+            o.repeatedBytes = [Data(), Data([65, 66])]
         }
         assertTextFormatDecodeSucceeds("repeated_bytes: \"\"\nrepeated_bytes: \"A\" \"B\"\n") {(o: MessageTestType) in
-            return o.repeatedBytes == [Data(), Data(bytes: [65, 66])]
+            return o.repeatedBytes == [Data(), Data([65, 66])]
         }
         assertTextFormatDecodeSucceeds("repeated_bytes: [\"\", \"AB\"]\n") {(o: MessageTestType) in
-            return o.repeatedBytes == [Data(), Data(bytes: [65, 66])]
+            return o.repeatedBytes == [Data(), Data([65, 66])]
         }
         assertTextFormatDecodeSucceeds("repeated_bytes: [\"\", \"A\" \"B\"]\n") {(o: MessageTestType) in
-            return o.repeatedBytes == [Data(), Data(bytes: [65, 66])]
+            return o.repeatedBytes == [Data(), Data([65, 66])]
         }
     }
 
@@ -1231,7 +1290,7 @@ class Test_TextFormat_proto3: XCTestCase, PBTestHelpers {
         o.optionalDouble = 12
         o.optionalBool = true
         o.optionalString = "abc"
-        o.optionalBytes = Data(bytes: [65, 66])
+        o.optionalBytes = Data([65, 66])
         var nested = MessageTestType.NestedMessage()
         nested.bb = 7
         o.optionalNestedMessage = nested
@@ -1260,7 +1319,7 @@ class Test_TextFormat_proto3: XCTestCase, PBTestHelpers {
         o.repeatedDouble = [23, 24]
         o.repeatedBool = [true, false]
         o.repeatedString = ["abc", "def"]
-        o.repeatedBytes = [Data(), Data(bytes: [65, 66])]
+        o.repeatedBytes = [Data(), Data([65, 66])]
         var nested2 = nested
         nested2.bb = -7
         o.repeatedNestedMessage = [nested, nested2]
@@ -1286,8 +1345,8 @@ class Test_TextFormat_proto3: XCTestCase, PBTestHelpers {
             + "optional_fixed64: 8\n"
             + "optional_sfixed32: 9\n"
             + "optional_sfixed64: 10\n"
-            + "optional_float: 11\n"
-            + "optional_double: 12\n"
+            + "optional_float: 11.0\n"
+            + "optional_double: 12.0\n"
             + "optional_bool: true\n"
             + "optional_string: \"abc\"\n"
             + "optional_bytes: \"AB\"\n"
@@ -1315,8 +1374,8 @@ class Test_TextFormat_proto3: XCTestCase, PBTestHelpers {
             + "repeated_fixed64: [15, 16]\n"
             + "repeated_sfixed32: [17, 18]\n"
             + "repeated_sfixed64: [19, 20]\n"
-            + "repeated_float: [21, 22]\n"
-            + "repeated_double: [23, 24]\n"
+            + "repeated_float: [21.0, 22.0]\n"
+            + "repeated_double: [23.0, 24.0]\n"
             + "repeated_bool: [true, false]\n"
             + "repeated_string: \"abc\"\n"
             + "repeated_string: \"def\"\n"

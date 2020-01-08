@@ -85,7 +85,6 @@ TEST_PROTOS= \
 	Protos/generated_swift_names_fields.proto \
 	Protos/generated_swift_names_messages.proto \
 	Protos/google/protobuf/any_test.proto \
-	Protos/google/protobuf/descriptor.proto \
 	Protos/google/protobuf/map_proto2_unittest.proto \
 	Protos/google/protobuf/map_unittest.proto \
 	Protos/google/protobuf/test_messages_proto3.proto \
@@ -144,6 +143,7 @@ TEST_PROTOS= \
 LIBRARY_PROTOS= \
 	Protos/google/protobuf/any.proto \
 	Protos/google/protobuf/api.proto \
+	Protos/google/protobuf/descriptor.proto \
 	Protos/google/protobuf/duration.proto \
 	Protos/google/protobuf/empty.proto \
 	Protos/google/protobuf/field_mask.proto \
@@ -156,7 +156,6 @@ LIBRARY_PROTOS= \
 # Protos that are used internally by the plugin
 PLUGIN_PROTOS= \
 	Protos/google/protobuf/compiler/plugin.proto \
-	Protos/google/protobuf/descriptor.proto \
 	Protos/SwiftProtobufPluginLibrary/swift_protobuf_module_mappings.proto
 
 # Protos that are used by the conformance test runner.
@@ -259,20 +258,8 @@ build:
 	@rm Tests/LinuxMain.swift.new
 	${SWIFT} build
 
-# This will get run by any other rule that tries to use the plugin, to
-# ensure that the protoc on the local system is 3.1 or later.
-# For details, see
-#   https://github.com/apple/swift-protobuf/issues/111
+# Anything that needs the plugin should do a build.
 ${PROTOC_GEN_SWIFT}: build
-	@if ${PROTOC} --version | grep 'libprotoc\ 3\.[1-9]\.' > /dev/null; then \
-	  true; \
-	else \
-	  echo "===================================================================================="; \
-	  echo "WARNING: Unexpected version of protoc: $(shell ${PROTOC} --version)"; \
-	  echo "WARNING: The JSON support in generated files may not be correct."; \
-	  echo "WARNING: Use a protoc that is 3.1.x or higher."; \
-	  echo "===================================================================================="; \
-	fi
 
 # Does it really make sense to install a debug build, or should this be forcing
 # a release build and then installing that instead?
@@ -280,8 +267,7 @@ install: build
 	${INSTALL} ${PROTOC_GEN_SWIFT} ${BINDIR}
 
 clean:
-	-swift build --clean
-	-swift package clean
+	swift package clean
 	rm -rf .build _test ${PROTOC_GEN_SWIFT} DescriptorTestData.bin \
 	  Performance/_generated Performance/_results Protos/mined_words.txt \
 	  docs build
@@ -409,10 +395,10 @@ Tests/SwiftProtobufPluginLibraryTests/DescriptorTestData.swift: build ${PROTOC_G
 	@rm -f $@
 	@echo '// See Makefile how this is generated.' >> $@
 	@echo 'import Foundation' >> $@
-	@echo 'let fileDesciptorSetBytes: [UInt8] = [' >> $@
+	@echo 'let fileDescriptorSetBytes: [UInt8] = [' >> $@
 	@xxd -i < DescriptorTestData.bin >> $@
 	@echo ']' >> $@
-	@echo 'let fileDesciptorSetData = Data(bytes: fileDesciptorSetBytes)' >> $@
+	@echo 'let fileDescriptorSetData = Data(fileDescriptorSetBytes)' >> $@
 
 #
 # Collect a list of words that appear in the SwiftProtobuf library
@@ -515,7 +501,7 @@ regenerate-conformance-protos: build ${PROTOC_GEN_SWIFT}
 check-for-protobuf-checkout:
 	@if [ ! -d "${GOOGLE_PROTOBUF_CHECKOUT}/src/google/protobuf" ]; then \
 	  echo "ERROR: ${GOOGLE_PROTOBUF_CHECKOUT} does not appear to be a checkout of"; \
-	  echo "ERROR:   github.com/google/protobuf. Please check it out or set"; \
+	  echo "ERROR:   github.com/protocolbuffers/protobuf. Please check it out or set"; \
 	  echo "ERROR:   GOOGLE_PROTOBUF_CHECKOUT to point to a checkout."; \
 	  exit 1; \
 	fi
@@ -568,28 +554,32 @@ test-xcode-release: test-xcode-iOS-release test-xcode-macOS-release test-xcode-t
 
 # 4s - 32bit, 6s - 64bit
 test-xcode-iOS-debug:
+	# 9+ seems to not like concurrent testing with the iPhone 4s simulator.
 	xcodebuild -project SwiftProtobuf.xcodeproj \
 		-scheme SwiftProtobuf_iOS \
 		-configuration Debug \
-		-destination "platform=iOS Simulator,name=iPhone 6s,OS=latest" \
+		-destination "platform=iOS Simulator,name=iPhone 8,OS=latest" \
 		-destination "platform=iOS Simulator,name=iPhone 4s,OS=9.0" \
+		-disable-concurrent-destination-testing \
 		test $(XCODEBUILD_EXTRAS)
 
 # 4s - 32bit, 6s - 64bit
 # Release defaults to not supporting testing, so add ENABLE_TESTABILITY=YES
 # to ensure the main library gets testing support.
 test-xcode-iOS-release:
+	# 9+ seems to not like concurrent testing with the iPhone 4s simulator.
 	xcodebuild -project SwiftProtobuf.xcodeproj \
 		-scheme SwiftProtobuf_iOS \
 		-configuration Release \
-		-destination "platform=iOS Simulator,name=iPhone 6s,OS=latest" \
+		-destination "platform=iOS Simulator,name=iPhone 8,OS=latest" \
 		-destination "platform=iOS Simulator,name=iPhone 4s,OS=9.0" \
+		-disable-concurrent-destination-testing \
 		test ENABLE_TESTABILITY=YES $(XCODEBUILD_EXTRAS)
 
 test-xcode-macOS-debug:
 	xcodebuild -project SwiftProtobuf.xcodeproj \
 		-scheme SwiftProtobuf_macOS \
-		-configuration debug \
+		-configuration Debug \
 		build test $(XCODEBUILD_EXTRAS)
 
 # Release defaults to not supporting testing, so add ENABLE_TESTABILITY=YES
@@ -604,7 +594,7 @@ test-xcode-tvOS-debug:
 	xcodebuild -project SwiftProtobuf.xcodeproj \
 		-scheme SwiftProtobuf_tvOS \
 		-configuration Debug \
-		-destination "platform=tvOS Simulator,name=Apple TV 1080p,OS=latest" \
+		-destination "platform=tvOS Simulator,name=Apple TV,OS=latest" \
 		build test $(XCODEBUILD_EXTRAS)
 
 # Release defaults to not supporting testing, so add ENABLE_TESTABILITY=YES
@@ -613,7 +603,7 @@ test-xcode-tvOS-release:
 	xcodebuild -project SwiftProtobuf.xcodeproj \
 		-scheme SwiftProtobuf_tvOS \
 		-configuration Release \
-		-destination "platform=tvOS Simulator,name=Apple TV 1080p,OS=latest" \
+		-destination "platform=tvOS Simulator,name=Apple TV,OS=latest" \
 		build test ENABLE_TESTABILITY=YES $(XCODEBUILD_EXTRAS)
 
 # watchOS doesn't support tests, just do a build.
